@@ -17,7 +17,9 @@ import {
   Filter,
   CheckCircle2,
   X,
-  ArrowRightLeft
+  ArrowRightLeft,
+  Share2,
+  FileSpreadsheet
 } from 'lucide-react';
 import { INITIAL_DOCTORS, CENTERS } from './constants';
 import { Doctor, Shift } from './types';
@@ -27,6 +29,59 @@ export default function App() {
   const [doctors, setDoctors] = useState<Doctor[]>(INITIAL_DOCTORS);
   const [searchQuery, setSearchQuery] = useState('');
   
+  // Google Sheets State
+  const [isGoogleLinked, setIsGoogleLinked] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [spreadsheetUrl, setSpreadsheetUrl] = useState<string | null>(null);
+
+  // Check auth status on mount
+  React.useEffect(() => {
+    fetch('/api/auth/status')
+      .then(res => res.json())
+      .then(data => setIsGoogleLinked(data.isAuthenticated));
+
+    const handleMessage = (event: MessageEvent) => {
+      const origin = event.origin;
+      if (!origin.endsWith('.run.app') && !origin.includes('localhost')) return;
+      if (event.data?.type === 'OAUTH_AUTH_SUCCESS') {
+        setIsGoogleLinked(true);
+      }
+    };
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, []);
+
+  const handleConnectGoogle = async () => {
+    try {
+      const res = await fetch('/api/auth/url');
+      const { url } = await res.json();
+      window.open(url, 'google_auth', 'width=600,height=700');
+    } catch (err) {
+      console.error('Failed to get auth URL', err);
+    }
+  };
+
+  const handleSaveToSheets = async () => {
+    setIsSaving(true);
+    try {
+      const res = await fetch('/api/gsheets/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ doctors, centers: CENTERS })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setSpreadsheetUrl(data.spreadsheetUrl);
+        setShowSuccessToast(true);
+        setTimeout(() => setShowSuccessToast(false), 5000);
+      }
+    } catch (err) {
+      console.error('Failed to save to sheets', err);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   // Scheduler State
   const [selectedDoctorId, setSelectedDoctorId] = useState<string>('');
   const [selectedCenterId, setSelectedCenterId] = useState<string>('');
@@ -79,7 +134,31 @@ export default function App() {
           </div>
         </div>
 
-        <div className="flex bg-black/20 p-1 rounded-full gap-1 border border-white/5">
+        <div className="flex items-center gap-4">
+          {!isGoogleLinked ? (
+            <button 
+              onClick={handleConnectGoogle}
+              className="flex items-center gap-2 px-4 py-2 bg-white/5 border border-white/10 rounded-xl text-xs font-bold text-slate-300 hover:bg-white/10 transition-all"
+            >
+              <FileSpreadsheet className="w-4 h-4 text-green-400" />
+              Link Google Sheets
+            </button>
+          ) : (
+            <button 
+              onClick={handleSaveToSheets}
+              disabled={isSaving}
+              className="flex items-center gap-2 px-4 py-2 bg-green-500/10 border border-green-500/20 rounded-xl text-xs font-bold text-green-400 hover:bg-green-500/20 transition-all disabled:opacity-50"
+            >
+              {isSaving ? (
+                <div className="w-4 h-4 border-2 border-green-400/30 border-t-green-400 rounded-full animate-spin" />
+              ) : (
+                <Share2 className="w-4 h-4" />
+              )}
+              {spreadsheetUrl ? 'Update Google Sheet' : 'Export to Sheets'}
+            </button>
+          )}
+
+          <div className="flex bg-black/20 p-1 rounded-full gap-1 border border-white/5">
           <button 
             onClick={() => setActiveTab('directory')}
             className={`px-4 py-1.5 rounded-full text-xs font-medium transition-all duration-300 ${activeTab === 'directory' ? 'bg-white/10 text-white shadow-none border-b-2 border-sky-400' : 'text-slate-400 hover:text-slate-200'}`}
@@ -93,6 +172,7 @@ export default function App() {
             Shift Scheduler
           </button>
         </div>
+      </div>
       </header>
 
       <main className="max-w-7xl mx-auto px-6 py-8">
@@ -346,12 +426,26 @@ export default function App() {
             initial={{ opacity: 0, scale: 0.9, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.9, y: 20 }}
-            className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 glass bg-[#1e293b]/90 text-white px-8 py-3.5 rounded-2xl shadow-2xl flex items-center gap-4 border border-white/20"
+            className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 glass bg-[#1e293b]/90 text-white px-8 py-3.5 rounded-2xl shadow-2xl flex flex-col items-center gap-4 border border-white/20 min-w-[320px]"
           >
-            <div className="bg-green-400 rounded-full p-1">
-              <CheckCircle2 className="w-4 h-4 text-slate-900" />
+            <div className="flex items-center gap-3">
+              <div className="bg-green-400 rounded-full p-1">
+                <CheckCircle2 className="w-4 h-4 text-slate-900" />
+              </div>
+              <span className="text-sm font-bold tracking-tight">
+                {spreadsheetUrl ? 'Google Sheet Synchronized' : 'Master Record Updated Locally'}
+              </span>
             </div>
-            <span className="text-sm font-bold tracking-tight">Master Record Updated Locally</span>
+            {spreadsheetUrl && (
+              <a 
+                href={spreadsheetUrl} 
+                target="_blank" 
+                rel="noreferrer"
+                className="w-full py-2 bg-sky-500 rounded-xl text-[11px] font-mono uppercase tracking-widest text-center hover:bg-sky-600 transition-colors flex items-center justify-center gap-2"
+              >
+                Open Spreadsheet <ChevronRight className="w-3 h-3" />
+              </a>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
