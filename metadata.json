@@ -1,0 +1,6 @@
+{
+  "name": "Medical Staff Scheduler",
+  "description": "A professional management tool for scheduling 200+ doctors across 15 medical centers with real-time sync between directory and shift assignments.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
